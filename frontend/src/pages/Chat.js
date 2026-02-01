@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import axios from "axios";
 import { AuthContext } from "../context/AuthContext";
-import { socket } from "../socket";
+import { socket, connectSocket } from "../socket";
 
 const Chat = () => {
   const { user } = useContext(AuthContext);
@@ -11,49 +11,43 @@ const Chat = () => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
 
-  // 🔹 CONNECT SOCKET + FETCH CHATS
+  /* ---------------- CONNECT SOCKET ---------------- */
   useEffect(() => {
-    if (!user) return;
+    if (user && user._id) {
+      connectSocket(user);
+    }
 
-    socket.connect();
-    socket.emit("setup", user.user);
-
-    axios
-      .get("http://localhost:5000/api/chat", {
-        headers: {
-          Authorization: `Bearer ${user.token}`,
-        },
-      })
-      .then((res) => {
-        setChats(res.data);
-
-        // ✅ JOIN ALL CHAT ROOMS IMMEDIATELY
-        res.data.forEach((chat) => {
-          socket.emit("join chat", chat._id);
-        });
-      });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [user]);
-
-  // 🔹 REAL-TIME MESSAGE LISTENER (FIXED)
-  useEffect(() => {
-    socket.on("message received", (msg) => {
-      // ✅ Update UI ONLY if this chat is currently open
-      if (selectedChat && msg.chat._id === selectedChat._id) {
-        setMessages((prev) => [...prev, msg]);
+    socket.on("message received", (newMessageReceived) => {
+      // 🔥 REAL-TIME UPDATE WITHOUT CLICKING CHAT AGAIN
+      if (
+        selectedChat &&
+        newMessageReceived.chat._id === selectedChat._id
+      ) {
+        setMessages((prev) => [...prev, newMessageReceived]);
       }
     });
 
     return () => {
       socket.off("message received");
     };
-  }, [selectedChat]);
+  }, [user, selectedChat]);
 
-  // 🔹 OPEN CHAT & LOAD HISTORY
-  const openChat = async (chat) => {
+  /* ---------------- FETCH CHATS ---------------- */
+  useEffect(() => {
+    const fetchChats = async () => {
+      const { data } = await axios.get("http://localhost:5000/api/chat", {
+        headers: {
+          Authorization: `Bearer ${user.token}`,
+        },
+      });
+      setChats(data);
+    };
+
+    if (user) fetchChats();
+  }, [user]);
+
+  /* ---------------- FETCH MESSAGES ---------------- */
+  const fetchMessages = async (chat) => {
     setSelectedChat(chat);
 
     const { data } = await axios.get(
@@ -66,11 +60,14 @@ const Chat = () => {
     );
 
     setMessages(data);
+    socket.emit("join chat", chat._id);
   };
 
-  // 🔹 SEND MESSAGE
+  /* ---------------- SEND MESSAGE ---------------- */
   const sendMessage = async () => {
-    if (!newMessage || !selectedChat) return;
+    if (!newMessage.trim()) return;
+
+    setNewMessage("");
 
     const { data } = await axios.post(
       "http://localhost:5000/api/message",
@@ -85,54 +82,49 @@ const Chat = () => {
       }
     );
 
-    socket.emit("new message", data);
+    // 🔥 INSTANT LOCAL UPDATE
     setMessages((prev) => [...prev, data]);
-    setNewMessage("");
+
+    // 🔥 EMIT SOCKET EVENT
+    socket.emit("new message", data);
   };
 
   return (
-    <div style={{ display: "flex", gap: "20px" }}>
+    <div style={{ display: "flex" }}>
       {/* CHAT LIST */}
       <div style={{ width: "30%" }}>
         <h2>Chats</h2>
         {chats.map((chat) => (
           <div
             key={chat._id}
-            onClick={() => openChat(chat)}
+            onClick={() => fetchMessages(chat)}
             style={{
               cursor: "pointer",
-              padding: "6px",
-              borderBottom: "1px solid #ddd",
+              borderBottom: "1px solid gray",
             }}
           >
-            {chat.chatName || "Private Chat"}
+            {chat.chatName}
           </div>
         ))}
       </div>
-
-      {/* CHAT BOX */}
       <div style={{ width: "70%" }}>
-        {selectedChat ? (
+        <h2>Messages</h2>
+
+        {messages.map((msg) => (
+          <div key={msg._id}>
+            <b>{msg.sender.name}:</b> {msg.content}
+          </div>
+        ))}
+
+        {selectedChat && (
           <>
-            <h3>Messages</h3>
-
-            <div style={{ minHeight: "200px" }}>
-              {messages.map((msg) => (
-                <div key={msg._id}>
-                  <b>{msg.sender.name}:</b> {msg.content}
-                </div>
-              ))}
-            </div>
-
             <input
-              placeholder="Type message"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type message"
             />
             <button onClick={sendMessage}>Send</button>
           </>
-        ) : (
-          <p>Select a chat to start messaging</p>
         )}
       </div>
     </div>

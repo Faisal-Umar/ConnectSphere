@@ -13,26 +13,36 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*"
-  }
+    origin: "http://localhost:3000",
+    credentials: true,
+  },
 });
 
 /* ---------------- SOCKET LOGIC ---------------- */
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // join user room
+  // Join user personal room
   socket.on("setup", (userData) => {
-    socket.join(userData._id);
-    socket.emit("connected");
-  });
+  if (!userData || !userData._id) {
+    console.log("⚠️ Invalid userData in setup:", userData);
+    return;
+  }
 
-  // join chat room
+  socket.join(userData._id.toString());
+  socket.emit("connected");
+
+  console.log("User joined personal room:", userData._id);
+});
+
+
+  // Join chat room
   socket.on("join chat", (room) => {
     socket.join(room);
+    console.log("Joined chat room:", room);
   });
 
-  // typing indicator
+  // Typing indicators
   socket.on("typing", (room) => {
     socket.in(room).emit("typing");
   });
@@ -41,14 +51,19 @@ io.on("connection", (socket) => {
     socket.in(room).emit("stop typing");
   });
 
-  // new message
+  // ✅ FIXED NEW MESSAGE LOGIC
   socket.on("new message", (message) => {
     const chat = message.chat;
-    if (!chat.users) return;
+
+    if (!chat || !chat.users) return;
 
     chat.users.forEach((user) => {
-      if (user._id === message.sender._id) return;
-      socket.in(user._id).emit("message received", message);
+      // 🔥 FIX: ObjectId comparison
+      if (user._id.toString() === message.sender._id.toString()) return;
+
+      socket
+        .in(user._id.toString())
+        .emit("message received", message);
     });
   });
 
