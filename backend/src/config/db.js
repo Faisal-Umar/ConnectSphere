@@ -6,7 +6,7 @@ const connectDB = async () => {
     console.log("MongoDB connected successfully");
   } catch (error) {
     console.error("MongoDB connection failed:", error.message);
-    process.exit(1);
+    console.warn("⚠️  Warning: Database connection failed, but the server will remain running for Socket.io / local testing.");
   }
 };
 

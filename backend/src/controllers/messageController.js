@@ -10,10 +10,12 @@ exports.sendMessage = async (req, res) => {
 
   try {
     let message = await Message.create({
-      sender: req.user._id,
-      content,
-      chat: chatId
-    });
+  sender: req.user._id,
+  content,
+  chat: chatId,
+  readBy: [req.user._id]
+});
+
 
     message = await message.populate("sender", "name email");
     message = await message.populate("chat");
@@ -35,8 +37,9 @@ exports.sendMessage = async (req, res) => {
 exports.fetchMessages = async (req, res) => {
   try {
     const messages = await Message.find({ chat: req.params.chatId })
-      .populate("sender", "name email")
-      .sort({ createdAt: 1 });
+  .populate("sender", "name email")
+  .populate("readBy", "_id")
+  .sort({ createdAt: 1 });
 
     res.status(200).json(messages);
   } catch (error) {

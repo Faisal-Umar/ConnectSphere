@@ -40,13 +40,20 @@ exports.accessChat = async (req, res) => {
 exports.fetchChats = async (req, res) => {
   try {
     const chats = await Chat.find({
-      users: { $elemMatch: { $eq: req.user._id } }
-    })
-      .populate("users", "-password")
-      .populate("groupAdmin", "-password")
-      .sort({ updatedAt: -1 });
+  users: { $elemMatch: { $eq: req.user._id } }
+})
+  .populate("users", "-password")
+  .populate("groupAdmin", "-password")
+  .populate("latestMessage")
+  .sort({ updatedAt: -1 });
 
-    res.status(200).json(chats);
+  const populatedChats = await User.populate(chats, {
+  path: "latestMessage.sender",
+  select: "name email",
+});
+
+return res.status(200).json(populatedChats);
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
